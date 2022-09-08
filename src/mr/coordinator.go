@@ -1,15 +1,20 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
 
+	"github.com/liyue201/gostl/ds/queue"
+)
 
 type Coordinator struct {
 	// Your definitions here.
-
+	mapTaskQueue    queue.Queue
+	reduceTaskQueue queue.Queue
+	intermediate    []KeyValue
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -24,6 +29,22 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTaskRequestReply) error {
+	if c.mapTaskQueue.Empty() {
+		reply.status = RPCNoMoreFile
+		reply.filename = ""
+		return nil
+	}
+
+	// filepath := c.mapTaskQueue.Pop()
+	// reply.filename = filepath
+
+	return nil
+}
+
+func (c *Coordinator) MapTaskSetIntermediateService(args *RPCArg) error {
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -50,7 +71,6 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 
-
 	return ret
 }
 
@@ -60,11 +80,13 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
+	c := Coordinator{*queue.New(), *queue.New(), make([]KeyValue, 0)}
 
 	// Your code here.
 
-
+	for _, v := range files {
+		c.mapTaskQueue.Push(v)
+	}
 	c.server()
 	return &c
 }
