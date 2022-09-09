@@ -59,11 +59,11 @@ type RPCArg struct {
 
 type TaskRequestRPCArg struct {
 	RPCArg
+	TaskType int
 }
 
 type MapResultRPCArg struct {
 	RPCArg
-	Intermediate []KeyValue
 }
 
 //RPC Replies
