@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-
-	"github.com/liyue201/gostl/ds/queue"
+	"sync"
 )
 
 type Coordinator struct {
 	// Your definitions here.
-	mapTaskQueue    queue.Queue
-	reduceTaskQueue queue.Queue
-	intermediate    []KeyValue
+	taskList     []string
+	curIdx       int
+	intermediate []KeyValue
+	mux          sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -30,19 +30,36 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTaskRequestReply) error {
-	if c.mapTaskQueue.Empty() {
-		reply.status = RPCNoMoreFile
-		reply.filename = ""
+	if c.curIdx == len(c.taskList) {
+		// no more task to assign
+		reply.Status = RPCNoMoreFile
+		reply.Filename = ""
 		return nil
 	}
-
-	// filepath := c.mapTaskQueue.Pop()
-	// reply.filename = filepath
+	c.mux.Lock()
+	reply.Filename = c.taskList[c.curIdx]
+	c.curIdx++
+	c.mux.Unlock()
+	reply.Status = RPCStatusOK
 
 	return nil
 }
 
-func (c *Coordinator) MapTaskSetIntermediateService(args *RPCArg) error {
+func (c *Coordinator) MapTaskSetIntermediateService(args *MapResultRPCArg) error {
+	c.mux.Lock()
+	c.intermediate = append(c.intermediate, args.Intermediate...)
+	c.mux.Unlock()
+	return nil
+}
+
+func (c *Coordinator) GetIntermediateService(args *RPCArg, reply *intermediateQuestReply) error {
+	if args.CommandType != QuestIntermediate {
+		reply.Status = RPCInterfaceMissUsed
+		return nil
+	}
+
+	reply.Intermediate = c.intermediate
+	reply.Status = RPCStatusOK
 	return nil
 }
 
@@ -80,12 +97,12 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{*queue.New(), *queue.New(), make([]KeyValue, 0)}
+	c := Coordinator{make([]string, 0), 0, make([]KeyValue, 0), sync.Mutex{}}
 
 	// Your code here.
 
 	for _, v := range files {
-		c.mapTaskQueue.Push(v)
+		c.taskList = append(c.taskList, v)
 	}
 	c.server()
 	return &c

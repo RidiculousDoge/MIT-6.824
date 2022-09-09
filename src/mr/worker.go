@@ -3,8 +3,10 @@ package mr
 import (
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"log"
 	"net/rpc"
+	"os"
 )
 
 //
@@ -13,6 +15,10 @@ import (
 type KeyValue struct {
 	Key   string
 	Value string
+}
+
+func DispKeyValue(kv *KeyValue) {
+	fmt.Printf("%+v", kv)
 }
 
 //
@@ -36,6 +42,58 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
+	args := MapRequestRPCArg{RPCArg{GetMapTask}}
+	reply := MapTaskRequestReply{RPCReply{RPCReplyInit}, ""}
+	intermediate := make([]KeyValue, 0)
+	for reply.Status != RPCNoMoreFile && reply.Status != RPCStatusFailed {
+		fmt.Printf("%+v \n", args)
+		fmt.Printf("%+v \n", reply)
+		if reply.Status == RPCReplyInit {
+			res := questTask(&args, &reply)
+			if !res {
+				break
+			}
+			continue
+		}
+		execMapTask(reply.Filename, mapf, intermediate)
+		res := questTask(&args, &reply)
+		if !res {
+			break
+		}
+	}
+	if reply.Status == RPCStatusFailed {
+		fmt.Printf("worker rpc request failed")
+	}
+	if reply.Status == RPCNoMoreFile {
+		fmt.Printf("finish assigned task")
+		for _, v := range intermediate {
+			fmt.Printf("%+v", v)
+		}
+	}
+
+}
+
+func questTask(args *MapRequestRPCArg, reply *MapTaskRequestReply) bool {
+	res := call("Coordinator.QuestMapTaskService", &args, &reply)
+	if !res {
+		fmt.Printf("quest failed\n")
+		return false
+	}
+	return true
+}
+
+func execMapTask(filename string, mapf func(string, string) []KeyValue, intermediate []KeyValue) {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	file.Close()
+	kva := mapf(filename, string(content))
+	intermediate = append(intermediate, kva...)
 }
 
 //

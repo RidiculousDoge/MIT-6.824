@@ -17,6 +17,7 @@ const GetReduceStatus = 101
 const GetReduceTask = 102
 const MapTaskFinished = 103
 const ReduceTaskFinished = 104
+const QuestIntermediate = 105
 
 // Task reply info
 const MapTaskAssigned = 200
@@ -28,6 +29,8 @@ const NoReduceTaskAssigned = 203
 const RPCStatusOK = 300
 const RPCStatusFailed = 301
 const RPCNoMoreFile = 302
+const RPCInterfaceMissUsed = 303
+const RPCReplyInit = 304
 
 //
 // example to show how to declare the arguments
@@ -46,7 +49,7 @@ type ExampleReply struct {
 
 // RPC Args
 type RPCArg struct {
-	commandType int
+	CommandType int
 }
 
 type MapRequestRPCArg struct {
@@ -55,26 +58,30 @@ type MapRequestRPCArg struct {
 
 type MapResultRPCArg struct {
 	RPCArg
-	intermediate []KeyValue
+	Intermediate []KeyValue
 }
 
 //RPC Replies
 type RPCReply struct {
-	status int
+	Status int
 }
 
 type MapTaskRequestReply struct {
 	RPCReply
-	filename string
+	Filename string
 }
 
 type MapTaskResultReply struct {
 	RPCReply
 }
 
+type intermediateQuestReply struct {
+	RPCReply
+	Intermediate []KeyValue
+}
+
 type ReduceReply struct {
-	filename1 string
-	filename2 string
+	RPCReply
 }
 
 // Cook up a unique-ish UNIX-domain socket name
