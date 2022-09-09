@@ -11,7 +11,7 @@ import (
 	"strconv"
 )
 
-// Task type
+// command type
 const GetMapTask = 100
 const GetReduceStatus = 101
 const GetReduceTask = 102
@@ -31,6 +31,11 @@ const RPCStatusFailed = 301
 const RPCNoMoreFile = 302
 const RPCInterfaceMissUsed = 303
 const RPCReplyInit = 304
+
+//Task Type
+const MapTask = 400
+const ReduceTask = 401
+const WaitTask = 402
 
 //
 // example to show how to declare the arguments
@@ -52,7 +57,7 @@ type RPCArg struct {
 	CommandType int
 }
 
-type MapRequestRPCArg struct {
+type TaskRequestRPCArg struct {
 	RPCArg
 }
 
@@ -63,10 +68,11 @@ type MapResultRPCArg struct {
 
 //RPC Replies
 type RPCReply struct {
-	Status int
+	TaskType int
+	Status   int
 }
 
-type MapTaskRequestReply struct {
+type TaskRequestReply struct {
 	RPCReply
 	Filename string
 }
@@ -80,7 +86,7 @@ type IntermediateQuestReply struct {
 	Intermediate []KeyValue
 }
 
-type ReduceReply struct {
+type ReduceTaskResultReply struct {
 	RPCReply
 }
 

@@ -46,8 +46,8 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
-	args := MapRequestRPCArg{RPCArg{GetMapTask}}
-	reply := MapTaskRequestReply{RPCReply{RPCReplyInit}, ""}
+	args := TaskRequestRPCArg{RPCArg{GetMapTask}}
+	reply := TaskRequestReply{RPCReply{RPCReplyInit}, ""}
 	res := false
 	for reply.Status != RPCNoMoreFile && reply.Status != RPCStatusFailed {
 		intermediate := make([]KeyValue, 0)

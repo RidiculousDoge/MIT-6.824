@@ -12,10 +12,12 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	taskList     []string
-	curIdx       int
-	intermediate []KeyValue
-	mux          sync.Mutex
+	mapTaskList  []string
+	curMapIdx    int
+
+	reduceTaskList []string // mr-m-n.txt
+	curReduceIdx   int
+	mux            sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -30,8 +32,8 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTaskRequestReply) error {
-	if c.curIdx == len(c.taskList) {
+func (c *Coordinator) QuestMapTaskService(args *TaskRequestRPCArg, reply *TaskRequestReply) error {
+	if c.curMapIdx == len(c.mapTaskList) {
 		// no more task to assign
 		fmt.Printf("no more task to assign\n")
 		reply.Status = RPCNoMoreFile
@@ -39,31 +41,34 @@ func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTask
 		return nil
 	}
 	c.mux.Lock()
-	reply.Filename = c.taskList[c.curIdx]
-	c.curIdx++
+	reply.Filename = c.mapTaskList[c.curMapIdx]
+	c.curMapIdx++
 	c.mux.Unlock()
 	reply.Status = RPCStatusOK
 
 	return nil
 }
 
-func (c *Coordinator) MapTaskSetIntermediateService(args *MapResultRPCArg, reply *MapTaskResultReply) error {
+
+
+func (c *Coordinator) assignMapTask(reply *TaskRequestReply){
+	// dont judge task availability in this function
+	// directly assign map task
 	c.mux.Lock()
-	c.intermediate = append(c.intermediate, args.Intermediate...)
-	reply.RPCReply = RPCReply{RPCStatusOK}
-	fmt.Printf("intermediate value set,all together %d kvs \n", len(c.intermediate))
+	reply.Filename = c.mapTaskList[c.curMapIdx]
+	c.curMapIdx++
 	c.mux.Unlock()
-	return nil
+	reply.Status = RPCStatusOK
+	reply.TaskType = MapTask
 }
 
-func (c *Coordinator) GetIntermediateService(args *RPCArg, reply *IntermediateQuestReply) error {
-	if args.CommandType != QuestIntermediate {
-		reply.Status = RPCInterfaceMissUsed
-		return nil
-	}
+func (c *Coordinator) assignReduceTask(reply *TaskRequestReply){
+	
+}
 
-	reply.Intermediate = c.intermediate
-	reply.Status = RPCStatusOK
+func (c *Coordinator) QuestTaskService(args *RPCArg, reply *RPCReply) error {
+	switch args.
+
 	return nil
 }
 
@@ -101,12 +106,16 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{make([]string, 0), 0, make([]KeyValue, 0), sync.Mutex{}}
+	c := Coordinator{}
 
 	// Your code here.
+	c.mapTaskList = make([]string, 0)
+	c.curMapIdx = 0
+	c.reduceTaskList = make([]string, 0)
+	c.curReduceIdx = 0
 
 	for _, v := range files {
-		c.taskList = append(c.taskList, v)
+		c.mapTaskList = append(c.mapTaskList, v)
 	}
 	c.server()
 	return &c
