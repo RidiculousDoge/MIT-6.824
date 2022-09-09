@@ -75,7 +75,7 @@ type MapTaskResultReply struct {
 	RPCReply
 }
 
-type intermediateQuestReply struct {
+type IntermediateQuestReply struct {
 	RPCReply
 	Intermediate []KeyValue
 }

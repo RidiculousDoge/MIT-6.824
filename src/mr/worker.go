@@ -21,6 +21,10 @@ func DispKeyValue(kv *KeyValue) {
 	fmt.Printf("%+v", kv)
 }
 
+func LogError(ErrorMessage string, code int) {
+	fmt.Printf(ErrorMessage+", code:%d \n", code)
+}
+
 //
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
@@ -44,45 +48,39 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	args := MapRequestRPCArg{RPCArg{GetMapTask}}
 	reply := MapTaskRequestReply{RPCReply{RPCReplyInit}, ""}
-	intermediate := make([]KeyValue, 0)
+	res := false
 	for reply.Status != RPCNoMoreFile && reply.Status != RPCStatusFailed {
-		fmt.Printf("%+v \n", args)
-		fmt.Printf("%+v \n", reply)
+		intermediate := make([]KeyValue, 0)
 		if reply.Status == RPCReplyInit {
-			res := questTask(&args, &reply)
+			res = call("Coordinator.QuestMapTaskService", &args, &reply)
 			if !res {
-				break
+				LogError("quest Task Failed", reply.Status)
+				return
 			}
 			continue
 		}
-		execMapTask(reply.Filename, mapf, intermediate)
-		res := questTask(&args, &reply)
+		execMapTask(reply.Filename, mapf, &intermediate)
+		// set intermediate back to coordinator
+		initReply := MapTaskResultReply{RPCReply{RPCReplyInit}}
+		if !sendIntermediateToCoordinator(&intermediate, &initReply) {
+			LogError("worker set coordinator intermediate failed", initReply.Status)
+			return
+		}
+		res = call("Coordinator.QuestMapTaskService", &args, &reply)
 		if !res {
-			break
+			LogError("quest Task Failed", reply.Status)
+			return
 		}
 	}
-	if reply.Status == RPCStatusFailed {
-		fmt.Printf("worker rpc request failed")
+	if reply.Status != RPCNoMoreFile {
+		LogError("worker rpc request failed", reply.Status)
+		return
 	}
-	if reply.Status == RPCNoMoreFile {
-		fmt.Printf("finish assigned task")
-		for _, v := range intermediate {
-			fmt.Printf("%+v", v)
-		}
-	}
+	fmt.Printf("worker finished\n")
 
 }
 
-func questTask(args *MapRequestRPCArg, reply *MapTaskRequestReply) bool {
-	res := call("Coordinator.QuestMapTaskService", &args, &reply)
-	if !res {
-		fmt.Printf("quest failed\n")
-		return false
-	}
-	return true
-}
-
-func execMapTask(filename string, mapf func(string, string) []KeyValue, intermediate []KeyValue) {
+func execMapTask(filename string, mapf func(string, string) []KeyValue, intermediate *[]KeyValue) {
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -93,7 +91,16 @@ func execMapTask(filename string, mapf func(string, string) []KeyValue, intermed
 	}
 	file.Close()
 	kva := mapf(filename, string(content))
-	intermediate = append(intermediate, kva...)
+	*intermediate = append(*intermediate, kva...)
+}
+
+func sendIntermediateToCoordinator(intermediate *[]KeyValue, initReply *MapTaskResultReply) bool {
+	args := MapResultRPCArg{}
+	args.RPCArg = RPCArg{MapTaskFinished}
+	args.Intermediate = *intermediate
+
+	res := call("Coordinator.MapTaskSetIntermediateService", &args, &initReply)
+	return res
 }
 
 //

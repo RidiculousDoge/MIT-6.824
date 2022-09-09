@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -32,6 +33,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTaskRequestReply) error {
 	if c.curIdx == len(c.taskList) {
 		// no more task to assign
+		fmt.Printf("no more task to assign\n")
 		reply.Status = RPCNoMoreFile
 		reply.Filename = ""
 		return nil
@@ -45,14 +47,16 @@ func (c *Coordinator) QuestMapTaskService(args *MapRequestRPCArg, reply *MapTask
 	return nil
 }
 
-func (c *Coordinator) MapTaskSetIntermediateService(args *MapResultRPCArg) error {
+func (c *Coordinator) MapTaskSetIntermediateService(args *MapResultRPCArg, reply *MapTaskResultReply) error {
 	c.mux.Lock()
 	c.intermediate = append(c.intermediate, args.Intermediate...)
+	reply.RPCReply = RPCReply{RPCStatusOK}
+	fmt.Printf("intermediate value set,all together %d kvs \n", len(c.intermediate))
 	c.mux.Unlock()
 	return nil
 }
 
-func (c *Coordinator) GetIntermediateService(args *RPCArg, reply *intermediateQuestReply) error {
+func (c *Coordinator) GetIntermediateService(args *RPCArg, reply *IntermediateQuestReply) error {
 	if args.CommandType != QuestIntermediate {
 		reply.Status = RPCInterfaceMissUsed
 		return nil
