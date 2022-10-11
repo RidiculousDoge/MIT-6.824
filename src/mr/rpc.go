@@ -20,6 +20,7 @@ const ReduceTask = 101
 const WaitTask = 102
 const ServerErr = 103
 const ExitTask = 104
+const WorkerIdAssignmentTask = 105
 
 // Task Result Type
 const TaskFinished = 200

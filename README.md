@@ -37,3 +37,29 @@
 - 任务结束后worker继续请求任务
 
 - 当worker连续收到3个waitTask时,认为任务全部完成,程序退出.
+
+## 数据结构设计
+```go
+// RPC Args
+// 只需要请求任务，因此只需要workerId
+// workerId从0计数,未分配则赋-1
+type RPCArg struct{
+    workerId int
+}
+```
+
+```go
+// RPC Reply
+
+```
+
+
+```go
+// TaskType
+const MapTask = 100
+const ReduceTask = 101
+const WaitTask = 102
+const ServerErr = 103
+const ExitTask = 104
+const WorkerIdAssignmentTask = 105
+```
