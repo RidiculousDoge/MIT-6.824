@@ -1,12 +1,15 @@
 package mr
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net/rpc"
 	"os"
+	"strconv"
 )
 
 //
@@ -17,12 +20,38 @@ type KeyValue struct {
 	Value string
 }
 
+func (kv KeyValue) KVToString() {
+	return
+}
+
 func DispKeyValue(kv *KeyValue) {
 	fmt.Printf("%+v", kv)
 }
 
 func LogError(ErrorMessage string, code int) {
 	fmt.Printf(ErrorMessage+", code:%d \n", code)
+}
+
+func ToBytes(kvPairs []KeyValue) []byte {
+	b := bytes.Buffer{}
+	e := gob.NewEncoder(&b)
+	err := e.Encode(kvPairs)
+	if err != nil {
+		fmt.Println("failed gob Encode", err)
+	}
+	return b.Bytes()
+}
+
+func FromBytes(byteArr []byte) []KeyValue {
+	m := []KeyValue{}
+	b := bytes.Buffer{}
+	b.Write(byteArr)
+	d := gob.NewDecoder(&b)
+	err := d.Decode(&m)
+	if err != nil {
+		fmt.Println("failed gob decode", err)
+	}
+	return m
 }
 
 //
@@ -46,41 +75,57 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
-	args := TaskRequestRPCArg{RPCArg{GetMapTask}}
-	reply := TaskRequestReply{RPCReply{RPCReplyInit}, ""}
-	res := false
-	for reply.Status != RPCNoMoreFile && reply.Status != RPCStatusFailed {
-		intermediate := make([]KeyValue, 0)
-		if reply.Status == RPCReplyInit {
-			res = call("Coordinator.QuestMapTaskService", &args, &reply)
-			if !res {
-				LogError("quest Task Failed", reply.Status)
-				return
-			}
-			continue
-		}
-		execMapTask(reply.Filename, mapf, &intermediate)
-		// set intermediate back to coordinator
-		initReply := MapTaskResultReply{RPCReply{RPCReplyInit}}
-		if !sendIntermediateToCoordinator(&intermediate, &initReply) {
-			LogError("worker set coordinator intermediate failed", initReply.Status)
-			return
-		}
-		res = call("Coordinator.QuestMapTaskService", &args, &reply)
-		if !res {
-			LogError("quest Task Failed", reply.Status)
-			return
-		}
-	}
-	if reply.Status != RPCNoMoreFile {
-		LogError("worker rpc request failed", reply.Status)
-		return
-	}
-	fmt.Printf("worker finished\n")
+	// args := TaskRequestRPCArg{RPCArg{GetMapTask}}
+	// reply := TaskRequestReply{RPCReply{RPCReplyInit}, ""}
+	// res := false
+	// for reply.Status != RPCNoMoreFile && reply.Status != RPCStatusFailed {
+	// 	intermediate := make([]KeyValue, 0)
+	// 	if reply.Status == RPCReplyInit {
+	// 		res = call("Coordinator.QuestMapTaskService", &args, &reply)
+	// 		if !res {
+	// 			LogError("quest Task Failed", reply.Status)
+	// 			return
+	// 		}
+	// 		continue
+	// 	}
+	// 	execMapTask(reply.Filename, mapf, &intermediate)
+	// 	// set intermediate back to coordinator
+	// 	initReply := MapTaskResultReply{RPCReply{RPCReplyInit}}
+	// 	if !sendIntermediateToCoordinator(&intermediate, &initReply) {
+	// 		LogError("worker set coordinator intermediate failed", initReply.Status)
+	// 		return
+	// 	}
+	// 	res = call("Coordinator.QuestMapTaskService", &args, &reply)
+	// 	if !res {
+	// 		LogError("quest Task Failed", reply.Status)
+	// 		return
+	// 	}
+	// }
+	// if reply.Status != RPCNoMoreFile {
+	// 	LogError("worker rpc request failed", reply.Status)
+	// 	return
+	// }
+	// fmt.Printf("worker finished\n")
+
+	args := TaskQuestRPCArgs{}
+	args.workerId = InitWorkerId
+
+	reply := TaskQuestRPCReply{}
 
 }
 
-func execMapTask(filename string, mapf func(string, string) []KeyValue, intermediate *[]KeyValue) {
+func writeToFile(intermediate *map[int][]KeyValue, workerId int) {
+	for i := 0; i < len(*intermediate); i++ {
+		filepath := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i)
+		err := os.WriteFile(filepath, ToBytes((*intermediate)[i]), 0777)
+		if err != nil {
+			fmt.Println("write file %s err ", filepath, err)
+		}
+	}
+}
+
+func execMapTask(filename string, mapf func(string, string) []KeyValue, nReduce int, workerId int) {
+
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -91,16 +136,12 @@ func execMapTask(filename string, mapf func(string, string) []KeyValue, intermed
 	}
 	file.Close()
 	kva := mapf(filename, string(content))
-	*intermediate = append(*intermediate, kva...)
-}
-
-func sendIntermediateToCoordinator(intermediate *[]KeyValue, initReply *MapTaskResultReply) bool {
-	args := MapResultRPCArg{}
-	args.RPCArg = RPCArg{MapTaskFinished}
-	args.Intermediate = *intermediate
-
-	res := call("Coordinator.MapTaskSetIntermediateService", &args, &initReply)
-	return res
+	intermediate := map[int][]KeyValue{}
+	for _, v := range kva {
+		target := ihash(v.Key) % nReduce
+		intermediate[target] = append(intermediate[target], v)
+	}
+	writeToFile(&intermediate, workerId)
 }
 
 //
@@ -108,29 +149,29 @@ func sendIntermediateToCoordinator(intermediate *[]KeyValue, initReply *MapTaskR
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func CallExample() {
+// func CallExample() {
 
-	// declare an argument structure.
-	args := ExampleArgs{}
+// 	// declare an argument structure.
+// 	args := ExampleArgs{}
 
-	// fill in the argument(s).
-	args.X = 99
+// 	// fill in the argument(s).
+// 	args.X = 99
 
-	// declare a reply structure.
-	reply := ExampleReply{}
+// 	// declare a reply structure.
+// 	reply := ExampleReply{}
 
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-	if ok {
-		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
-		fmt.Printf("call failed!\n")
-	}
-}
+// 	// send the RPC request, wait for the reply.
+// 	// the "Coordinator.Example" tells the
+// 	// receiving server that we'd like to call
+// 	// the Example() method of struct Coordinator.
+// 	ok := call("Coordinator.Example", &args, &reply)
+// 	if ok {
+// 		// reply.Y should be 100.
+// 		fmt.Printf("reply.Y %v\n", reply.Y)
+// 	} else {
+// 		fmt.Printf("call failed!\n")
+// 	}
+// }
 
 //
 // send an RPC request to the coordinator, wait for the response.

@@ -11,44 +11,19 @@ import (
 	"strconv"
 )
 
-// command type
-const GetMapTask = 100
-const GetReduceStatus = 101
-const GetReduceTask = 102
-const MapTaskFinished = 103
-const ReduceTaskFinished = 104
-const QuestIntermediate = 105
+// init workerid
+const InitWorkerId = -1
 
-// Task reply info
-const MapTaskAssigned = 200
-const NoMapTaskAssigned = 201
-const ReduceTaskAssigned = 202
-const NoReduceTaskAssigned = 203
+// Task Type
+const MapTask = 100
+const ReduceTask = 101
+const WaitTask = 102
+const ServerErr = 103
+const ExitTask = 104
 
-//  RPC Status
-const RPCStatusOK = 300
-const RPCStatusFailed = 301
-const RPCNoMoreFile = 302
-const RPCInterfaceMissUsed = 303
-const RPCReplyInit = 304
-
-//Task Type
-const MapTask = 400
-const ReduceTask = 401
-const WaitTask = 402
-
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
-
-type ExampleArgs struct {
-	X int
-}
-
-type ExampleReply struct {
-	Y int
-}
+// Task Result Type
+const TaskFinished = 200
+const TaskFailed = 201
 
 // Add your RPC definitions here.
 
@@ -57,37 +32,34 @@ type RPCArg struct {
 	CommandType int
 }
 
-type TaskRequestRPCArg struct {
-	RPCArg
-	TaskType int
+type TaskQuestRPCArgs struct {
+	workerId int
 }
 
-type MapResultRPCArg struct {
-	RPCArg
+type TaskResultRPCArgs struct {
+	workerId   int
+	TaskType   int
+	TaskResult int
 }
 
-//RPC Replies
-type RPCReply struct {
-	TaskType int
-	Status   int
+type TaskQuestRPCReply struct {
+	workerId    int
+	TaskType    int
+	MapReply    MapReply
+	ReduceReply ReduceReply
 }
-
-type TaskRequestReply struct {
-	RPCReply
+type MapReply struct {
 	Filename string
+	NReduce  int
 }
 
-type MapTaskResultReply struct {
-	RPCReply
+type ReduceReply struct {
+	TargetFilename string // mr-y
+	SrcFilename    string // mr-x-y
+	NReduce        int
 }
 
-type IntermediateQuestReply struct {
-	RPCReply
-	Intermediate []KeyValue
-}
-
-type ReduceTaskResultReply struct {
-	RPCReply
+type TaskResultRPCReply struct {
 }
 
 // Cook up a unique-ish UNIX-domain socket name
