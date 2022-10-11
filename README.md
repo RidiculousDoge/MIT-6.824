@@ -50,7 +50,22 @@ type RPCArg struct{
 
 ```go
 // RPC Reply
+type TaskQuestRPCReply struct {
+	workerId    int
+	TaskType    int
+	MapReply    MapReply
+	ReduceReply ReduceReply
+}
+type MapReply struct {
+	Filename string
+	NReduce  int
+}
 
+type ReduceReply struct {
+	TargetFilename string // mr-y
+	SrcFilename    string // mr-x-y
+	NReduce        int
+}
 ```
 
 
