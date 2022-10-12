@@ -24,19 +24,20 @@ type Coordinator struct {
 
 	nReduce int
 	mux     sync.Mutex
+
+	workerTasks map[int][]int //{"workerId":[TaskType,TaskType]}
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-func (c *Coordinator) assignMapTask(reply *TaskQuestRPCReply) {
+func (c *Coordinator) assignMapTask(reply *TaskQuestRPCReply, workerId int) {
 	// dont judge task availability in this function
 	// directly assign map task
-	c.mux.Lock()
 	reply.MapReply.Filename = c.mapTaskList[c.curMapIdx]
 	c.curMapIdx++
 	reply.MapReply.NReduce = c.nReduce
 	reply.TaskType = MapTask
-	c.mux.Unlock()
+	reply.workerId = workerId
 }
 
 func getTargetFilename(Srcfilename string) string {
@@ -48,14 +49,12 @@ func getTargetFilename(Srcfilename string) string {
 func (c *Coordinator) processMapTaskResult(workerId int) {
 	for i := 0; i < c.nReduce; i++ {
 		filename := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i)
-		c.mux.Lock()
 		c.reduceTaskList[i].Enqueue(filename)
-		c.mux.Unlock()
 	}
 }
 
-func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply) {
-	c.mux.Lock()
+// TODO: check assignReduceTask func
+func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply, workerId int) {
 	flag := true // mark if all queues are empty
 	for _, q := range c.reduceTaskList {
 		if !q.Empty() {
@@ -71,29 +70,75 @@ func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply) {
 			reply.ReduceReply.NReduce = c.nReduce
 			reply.ReduceReply.SrcFilename = filename
 			reply.ReduceReply.TargetFilename = getTargetFilename(filename)
+			reply.workerId = workerId
 			break
 		}
 	}
 	if flag {
 		reply.TaskType = WaitTask
 	}
-	c.mux.Unlock()
+}
+
+func (c *Coordinator) isReduceTaskListEmpty() bool {
+	// return true if all empty
+	res := true
+	for _, q := range c.reduceTaskList {
+		if !q.Empty() {
+			res = false
+			break
+		}
+	}
+	return res
+}
+
+// TODO: finish response processor
+// TODO: get filename according to workerId
+func (c *Coordinator) processMapTaskResponse(workerId int) {
+	vec := c.workerTasks[workerId]
+
+}
+
+func (c *Coordinator) assignTask(workerId int, reply *TaskQuestRPCReply) {
+	if c.curMapIdx >= len(c.mapTaskList) && c.isReduceTaskListEmpty() {
+		// all empty
+		reply.workerId = workerId
+		reply.TaskType = WaitTask
+		return
+	}
+
+	if c.curMapIdx >= len(c.mapTaskList) {
+		// still have reduce task to assign
+		c.assignReduceTask(reply, workerId)
+		return
+	}
+
+	c.assignMapTask(reply, workerId)
 }
 
 func (c *Coordinator) QuestTaskService(args *TaskQuestRPCArgs, reply *TaskQuestRPCReply) error {
 	// always assign map task firstly
+	c.mux.Lock()
 	if args.workerId == InitWorkerId {
 		//assign workerId
+		c.workerCnt++
 		reply.workerId = c.workerCnt
-	} else {
-		reply.workerId = args.workerId
-	}
-
-	if c.curMapIdx < len(c.mapTaskList) {
-		c.assignMapTask(reply)
+		reply.TaskType = WorkerIdAssignmentTask
+		c.workerTasks[c.workerCnt] = make([]int, 0)
+		c.workerTasks[c.workerCnt] = append(c.workerTasks[c.workerCnt], WorkerIdAssignmentTask)
+		c.mux.Unlock()
 		return nil
 	}
-	c.assignReduceTask(reply)
+	// process Response
+	sliceLength := len(c.workerTasks[c.workerCnt]) - 1
+	lastTask := c.workerTasks[c.workerCnt][sliceLength]
+	if lastTask == MapTask {
+		c.processMapTaskResponse(args.workerId)
+	}
+
+	// assign task
+
+	// unlock coordinator
+	c.mux.Unlock()
 	return nil
 }
 
@@ -117,7 +162,6 @@ func (c *Coordinator) server() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
-	c.workerCnt++
 	go http.Serve(l, nil)
 }
 
