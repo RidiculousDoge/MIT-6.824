@@ -106,15 +106,57 @@ func Worker(mapf func(string, string) []KeyValue,
 	// 	return
 	// }
 	// fmt.Printf("worker finished\n")
-
+	workerId := InitWorkerId
+	mapTaskTimes := 0
 	args := TaskQuestRPCArgs{}
-	args.workerId = InitWorkerId
-
+	args.WorkerId = workerId
 	reply := TaskQuestRPCReply{}
+
+	for i := 0; i < 15; i++ {
+		fmt.Printf("current workerId in args is:" + strconv.Itoa(args.WorkerId) + "\n")
+		call("Coordinator.QuestTaskService", &args, &reply)
+		fmt.Printf("replyTaskType:" + strconv.Itoa(reply.TaskType) + "\n")
+		switch reply.TaskType {
+		case WorkerIdAssignmentTask:
+			workerId = reply.workerId
+			args.WorkerId = workerId
+		case MapTask:
+			mapTaskTimes += 1
+			execMapTask(reply.MapReply.Filename, mapf, reply.MapReply.NReduce, workerId, mapTaskTimes)
+		case ReduceTask:
+			execReduceTask(reply.ReduceReply.SrcFilename, reply.ReduceReply.TargetFilename)
+		}
+	}
 
 }
 
-func writeToFile(intermediate *map[int][]KeyValue, workerId int) {
+func execReduceTask(sourceFilename string, targetFilename string) {
+	fmt.Printf("sourceFile:" + sourceFilename + "\n")
+	fmt.Printf("targetFile:" + targetFilename + "\n")
+
+	sourceFile, err := os.Open(sourceFilename)
+	if err != nil {
+		log.Fatalf("cannot open source file:%v", sourceFilename)
+	}
+	targetFile, err := os.Open(targetFilename)
+	if err != nil {
+		log.Fatalf("cannot open target file:%v", targetFilename)
+	}
+	sourceFileContent, err := ioutil.ReadAll(sourceFile)
+	if err != nil {
+		log.Fatalf("cannot read source file content %v", sourceFile)
+	}
+	targetFileContent, err := ioutil.ReadAll(targetFile)
+	if err != nil {
+		log.Fatalf("cannot read target file content %v", sourceFile)
+	}
+	sourceFile.Close()
+	targetFile.Close()
+	fmt.Printf(string(sourceFileContent) + "\n")
+	fmt.Printf("targetFileContent" + string(targetFileContent) + "\n")
+}
+
+func writeToFile(intermediate *map[int][]KeyValue, workerId int, mapTaskTimes int) {
 	for i := 0; i < len(*intermediate); i++ {
 		filepath := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i)
 		err := os.WriteFile(filepath, ToBytes((*intermediate)[i]), 0777)
@@ -124,7 +166,7 @@ func writeToFile(intermediate *map[int][]KeyValue, workerId int) {
 	}
 }
 
-func execMapTask(filename string, mapf func(string, string) []KeyValue, nReduce int, workerId int) {
+func execMapTask(filename string, mapf func(string, string) []KeyValue, nReduce int, workerId int, mapTaskTimes int) {
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -137,11 +179,12 @@ func execMapTask(filename string, mapf func(string, string) []KeyValue, nReduce 
 	file.Close()
 	kva := mapf(filename, string(content))
 	intermediate := map[int][]KeyValue{}
+	// fmt.Printf("nReduce is" + strconv.Itoa(nReduce) + "\n")
 	for _, v := range kva {
 		target := ihash(v.Key) % nReduce
 		intermediate[target] = append(intermediate[target], v)
 	}
-	writeToFile(&intermediate, workerId)
+	writeToFile(&intermediate, workerId, mapTaskTimes)
 }
 
 //

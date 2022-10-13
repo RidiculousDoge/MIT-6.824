@@ -34,7 +34,7 @@ type RPCArg struct {
 }
 
 type TaskQuestRPCArgs struct {
-	workerId int
+	WorkerId int
 }
 
 type TaskResultRPCArgs struct {

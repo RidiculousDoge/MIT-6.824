@@ -17,6 +17,7 @@
         - mapTask,则将其完成的文件名写入reduceTaskList
         - reduceTask,不执行操作.
         - workerIdAssignmentTask,不执行操作
+        - waitTask,不执行操作
     - 执行完任务完成的操作后,执行任务分配的操作:
         - 如果mapTask队列和reduceTask队列都已经为空,则返回一个waitTask
         - 如果mapTask队列和reduceTask队列有一个为空,则assign不为空的task
@@ -30,7 +31,7 @@
 
 - 当worker收到mapTask时,读取文件里的每个词并且置出现次数为1,把这个结果写到一个中间文件`mr-${workerId}-${i}-${n}`, i为0~nReduce中的一个数,n为该worker执行mapTask的次数. 任务完成后任务结束;
 
-- 当worker收到reduceTask时,coordinator将此时ready被reduce的文件(e.g `mr-x-y`传送给worker,worker将`mr-x-y`与目标文件`mr-y`合并,写在`mr-y`中.任务完成后任务结束
+- 当worker收到reduceTask时,coordinator将此时ready被reduce的文件(e.g `mr-x-y`传送给worker,worker将`mr-x-y-i`与目标文件`mr-y`合并,写在`mr-y`中.任务完成后任务结束
 
 - 当worker收到waitTask时,sleep 10s. 任务完成后任务结束
 

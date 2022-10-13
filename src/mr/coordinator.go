@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -38,8 +39,11 @@ func (c *Coordinator) assignMapTask(reply *TaskQuestRPCReply, workerId int) {
 	reply.MapReply.NReduce = c.nReduce
 	reply.TaskType = MapTask
 	reply.workerId = workerId
+	reply.MapReply.NReduce = c.nReduce
+	c.workerTasks[workerId] = append(c.workerTasks[workerId], MapTask)
 }
 
+// TODO: update file format, modify this func
 func getTargetFilename(Srcfilename string) string {
 	tmp := strings.Split(Srcfilename, "-")
 	targetFilename := tmp[0] + "-" + tmp[2]
@@ -55,28 +59,28 @@ func (c *Coordinator) processMapTaskResult(workerId int) {
 
 // TODO: check assignReduceTask func
 func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply, workerId int) {
-	flag := true // mark if all queues are empty
+	fmt.Printf("assigning reduce task for worker:" + strconv.Itoa(workerId) + "\n")
 	for _, q := range c.reduceTaskList {
 		if !q.Empty() {
-			flag = false
 			// assign reduce task
 			filenameIf, ok := q.Dequeue()
 			if !ok {
 				reply.TaskType = ServerErr
+				c.workerTasks[workerId] = append(c.workerTasks[workerId], ServerErr)
 				break
 			}
 			filename := filenameIf.(string)
 			reply.TaskType = ReduceTask
 			reply.ReduceReply.NReduce = c.nReduce
-			reply.ReduceReply.SrcFilename = filename
-			reply.ReduceReply.TargetFilename = getTargetFilename(filename)
+			reply.ReduceReply.SrcFilename = filename                       // mr-x-y-i
+			reply.ReduceReply.TargetFilename = getTargetFilename(filename) // mr-y
 			reply.workerId = workerId
+			c.workerTasks[workerId] = append(c.workerTasks[workerId], ReduceTask)
 			break
 		}
 	}
-	if flag {
-		reply.TaskType = WaitTask
-	}
+	reply.TaskType = ServerErr
+	c.workerTasks[workerId] = append(c.workerTasks[workerId], ServerErr)
 }
 
 func (c *Coordinator) isReduceTaskListEmpty() bool {
@@ -94,11 +98,22 @@ func (c *Coordinator) isReduceTaskListEmpty() bool {
 // TODO: finish response processor
 // TODO: get filename according to workerId
 func (c *Coordinator) processMapTaskResponse(workerId int) {
+	fmt.Print("processing map task response for worker:" + strconv.Itoa(workerId) + "\n")
 	vec := c.workerTasks[workerId]
-
+	MapTaskcnt := -1
+	for _, v := range vec {
+		if v == MapTask {
+			MapTaskcnt++
+		}
+	}
+	for i := 0; i < c.nReduce; i++ {
+		filename := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i) + "-" + strconv.Itoa(MapTaskcnt)
+		c.reduceTaskList[i].Enqueue(filename)
+	}
 }
 
 func (c *Coordinator) assignTask(workerId int, reply *TaskQuestRPCReply) {
+	fmt.Printf("assigning task for worker:" + strconv.Itoa(workerId) + "\n")
 	if c.curMapIdx >= len(c.mapTaskList) && c.isReduceTaskListEmpty() {
 		// all empty
 		reply.workerId = workerId
@@ -118,34 +133,36 @@ func (c *Coordinator) assignTask(workerId int, reply *TaskQuestRPCReply) {
 func (c *Coordinator) QuestTaskService(args *TaskQuestRPCArgs, reply *TaskQuestRPCReply) error {
 	// always assign map task firstly
 	c.mux.Lock()
-	if args.workerId == InitWorkerId {
+	if args.WorkerId == InitWorkerId {
 		//assign workerId
 		c.workerCnt++
-		reply.workerId = c.workerCnt
+		reply.workerId = c.workerCnt - 1
 		reply.TaskType = WorkerIdAssignmentTask
-		c.workerTasks[c.workerCnt] = make([]int, 0)
-		c.workerTasks[c.workerCnt] = append(c.workerTasks[c.workerCnt], WorkerIdAssignmentTask)
+		c.workerTasks[c.workerCnt-1] = make([]int, 0)
+		c.workerTasks[c.workerCnt-1] = append(c.workerTasks[c.workerCnt-1], WorkerIdAssignmentTask)
+		fmt.Printf("assigning workerIdAssignmentTask with id " + strconv.Itoa(c.workerCnt-1) + "\n")
 		c.mux.Unlock()
 		return nil
 	}
 	// process Response
-	sliceLength := len(c.workerTasks[c.workerCnt]) - 1
-	lastTask := c.workerTasks[c.workerCnt][sliceLength]
+	sliceLength := len(c.workerTasks[args.WorkerId]) - 1
+	fmt.Printf("sliceLength:" + strconv.Itoa(sliceLength) + "\n")
+	lastTask := c.workerTasks[args.WorkerId][sliceLength]
+	fmt.Printf("lastTask:" + strconv.Itoa(lastTask) + "\n")
+	fmt.Printf("slice:")
+	for i := 0; i <= sliceLength; i++ {
+		fmt.Printf(strconv.Itoa(c.workerTasks[args.WorkerId][i]) + " ")
+	}
+	fmt.Printf("\n")
 	if lastTask == MapTask {
-		c.processMapTaskResponse(args.workerId)
+		c.processMapTaskResponse(args.WorkerId)
 	}
 
 	// assign task
+	c.assignTask(args.WorkerId, reply)
 
 	// unlock coordinator
 	c.mux.Unlock()
-	return nil
-}
-
-func (c *Coordinator) ProcessTaskResultService(args *TaskResultRPCArgs, reply *TaskResultRPCReply) error {
-	if args.TaskType == MapTask {
-		c.processMapTaskResult(args.workerId)
-	}
 	return nil
 }
 
@@ -186,9 +203,15 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
+	c.nReduce = nReduce
 	c.mapTaskList = make([]string, 0)
 	c.curMapIdx = 0
 	c.workerCnt = 0
+	c.workerTasks = make(map[int][]int)
+	c.reduceTaskList = make([]llq.Queue, nReduce)
+	for i := 0; i < nReduce; i++ {
+		c.reduceTaskList[i] = *llq.New()
+	}
 
 	for _, v := range files {
 		c.mapTaskList = append(c.mapTaskList, v)
