@@ -79,3 +79,16 @@ const ServerErr = 103
 const ExitTask = 104
 const WorkerIdAssignmentTask = 105
 ```
+
+## 运行
+```bash
+# in src/main directory
+go build -race -buildmode=plugin ../mrapps/wc.go
+
+# run coordinator
+go run -race mrcoordinator.go pg-*.txt
+```
+在另一个bash中运行
+```bash
+go run -race mrworker.go wc.so
+```

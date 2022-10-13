@@ -60,11 +60,13 @@ func (c *Coordinator) processMapTaskResult(workerId int) {
 // TODO: check assignReduceTask func
 func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply, workerId int) {
 	fmt.Printf("assigning reduce task for worker:" + strconv.Itoa(workerId) + "\n")
-	for _, q := range c.reduceTaskList {
+	for idx, q := range c.reduceTaskList {
 		if !q.Empty() {
 			// assign reduce task
+			fmt.Printf("assigning idx:" + strconv.Itoa(idx) + "\n")
 			filenameIf, ok := q.Dequeue()
 			if !ok {
+				fmt.Printf("error in idx:" + strconv.Itoa(idx) + "\n")
 				reply.TaskType = ServerErr
 				c.workerTasks[workerId] = append(c.workerTasks[workerId], ServerErr)
 				break
@@ -79,8 +81,6 @@ func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply, workerId int) {
 			break
 		}
 	}
-	reply.TaskType = ServerErr
-	c.workerTasks[workerId] = append(c.workerTasks[workerId], ServerErr)
 }
 
 func (c *Coordinator) isReduceTaskListEmpty() bool {
@@ -100,7 +100,7 @@ func (c *Coordinator) isReduceTaskListEmpty() bool {
 func (c *Coordinator) processMapTaskResponse(workerId int) {
 	fmt.Print("processing map task response for worker:" + strconv.Itoa(workerId) + "\n")
 	vec := c.workerTasks[workerId]
-	MapTaskcnt := -1
+	MapTaskcnt := 0
 	for _, v := range vec {
 		if v == MapTask {
 			MapTaskcnt++
@@ -146,7 +146,7 @@ func (c *Coordinator) QuestTaskService(args *TaskQuestRPCArgs, reply *TaskQuestR
 	}
 	// process Response
 	sliceLength := len(c.workerTasks[args.WorkerId]) - 1
-	fmt.Printf("sliceLength:" + strconv.Itoa(sliceLength) + "\n")
+	// fmt.Printf("sliceLength:" + strconv.Itoa(sliceLength) + "\n")
 	lastTask := c.workerTasks[args.WorkerId][sliceLength]
 	fmt.Printf("lastTask:" + strconv.Itoa(lastTask) + "\n")
 	fmt.Printf("slice:")
@@ -211,11 +211,18 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.reduceTaskList = make([]llq.Queue, nReduce)
 	for i := 0; i < nReduce; i++ {
 		c.reduceTaskList[i] = *llq.New()
+		filename := "mr-" + strconv.Itoa(i)
+		emptyFile, err := os.Create(filename)
+		if err != nil {
+			fmt.Printf("file create error,%v", err)
+		}
+		emptyFile.Close()
 	}
 
 	for _, v := range files {
 		c.mapTaskList = append(c.mapTaskList, v)
 	}
+
 	c.server()
 	return &c
 }

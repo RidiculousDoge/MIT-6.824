@@ -158,7 +158,7 @@ func execReduceTask(sourceFilename string, targetFilename string) {
 
 func writeToFile(intermediate *map[int][]KeyValue, workerId int, mapTaskTimes int) {
 	for i := 0; i < len(*intermediate); i++ {
-		filepath := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i)
+		filepath := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i) + "-" + strconv.Itoa(mapTaskTimes)
 		err := os.WriteFile(filepath, ToBytes((*intermediate)[i]), 0777)
 		if err != nil {
 			fmt.Println("write file %s err ", filepath, err)
