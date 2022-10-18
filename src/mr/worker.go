@@ -12,6 +12,14 @@ import (
 	"strconv"
 )
 
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 //
 // Map functions return a slice of KeyValue.
 //
@@ -131,9 +139,6 @@ func Worker(mapf func(string, string) []KeyValue,
 }
 
 func execReduceTask(sourceFilename string, targetFilename string) {
-	fmt.Printf("sourceFile:" + sourceFilename + "\n")
-	fmt.Printf("targetFile:" + targetFilename + "\n")
-
 	sourceFile, err := os.Open(sourceFilename)
 	if err != nil {
 		log.Fatalf("cannot open source file:%v", sourceFilename)
@@ -142,27 +147,24 @@ func execReduceTask(sourceFilename string, targetFilename string) {
 	if err != nil {
 		log.Fatalf("cannot open target file:%v", targetFilename)
 	}
-	sourceFileContent, err := ioutil.ReadAll(sourceFile)
-	if err != nil {
-		log.Fatalf("cannot read source file content %v", sourceFile)
-	}
-	targetFileContent, err := ioutil.ReadAll(targetFile)
-	if err != nil {
-		log.Fatalf("cannot read target file content %v", sourceFile)
-	}
+	sourceFileBytes, _ := ioutil.ReadAll(sourceFile)
+	targetFileBytes, _ := ioutil.ReadAll(targetFile)
 	sourceFile.Close()
 	targetFile.Close()
-	fmt.Printf(string(sourceFileContent) + "\n")
-	fmt.Printf("targetFileContent" + string(targetFileContent) + "\n")
+
+	sourceFileContent := string(sourceFileBytes)
+	targetFileContent := string(targetFileBytes)
+	// TODO: reduce sourceFileContent with targetFileContent
 }
 
 func writeToFile(intermediate *map[int][]KeyValue, workerId int, mapTaskTimes int) {
 	for i := 0; i < len(*intermediate); i++ {
 		filepath := "mr-" + strconv.Itoa(workerId) + "-" + strconv.Itoa(i) + "-" + strconv.Itoa(mapTaskTimes)
-		err := os.WriteFile(filepath, ToBytes((*intermediate)[i]), 0777)
-		if err != nil {
-			fmt.Println("write file %s err ", filepath, err)
+		file, _ := os.Create(filepath)
+		for j := 0; j < len((*intermediate)[i]); j++ {
+			fmt.Fprintf(file, "%v %v\n", (*intermediate)[i][j].Key, (*intermediate)[i][j].Value)
 		}
+		file.Close()
 	}
 }
 
