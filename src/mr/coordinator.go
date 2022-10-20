@@ -59,6 +59,7 @@ func (c *Coordinator) processMapTaskResult(workerId int) {
 
 // TODO: check assignReduceTask func
 func (c *Coordinator) assignReduceTask(reply *TaskQuestRPCReply, workerId int) {
+	// TODO: restrict assigning mr-y if already assigned and not received response
 	fmt.Printf("assigning reduce task for worker:" + strconv.Itoa(workerId) + "\n")
 	for idx, q := range c.reduceTaskList {
 		if !q.Empty() {

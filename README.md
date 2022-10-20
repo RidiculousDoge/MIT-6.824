@@ -15,13 +15,16 @@
     - 如果该worker首次发送请求,则coordinator给初次发送请求的worker分配一个workerId,然后任务结束。
     - 如果该worker不是首次发送请求,则coodinator任务该worker已经完成上一次任务.因此需要执行任务完成操作.根据上一次任务的taskType执行逻辑,如果是:
         - mapTask,则将其完成的文件名写入reduceTaskList
-        - reduceTask,不执行操作.
+        - reduceTask,解除其上次的写入锁.
         - workerIdAssignmentTask,不执行操作
         - waitTask,不执行操作
     - 执行完任务完成的操作后,执行任务分配的操作:
         - 如果mapTask队列和reduceTask队列都已经为空,则返回一个waitTask
         - 如果mapTask队列和reduceTask队列有一个为空,则assign不为空的task
         - 如果mapTask队列和reduceTask队列都不为空,则随机assign一个task.
+
+### reduce Task assignment 处理
+需要给结果文件`mr-y`加锁,因为单个worker执行reduce task时,会删除`mr-y`再写入.需要限制如果一个worker正在操作第y个文件,则其他worker不可操作该文件
 
 ## worker 处理逻辑
 
@@ -92,3 +95,7 @@ go run -race mrcoordinator.go pg-*.txt
 ```bash
 go run -race mrworker.go wc.so
 ```
+
+## TODO
+- [] 完成单机worker执行reduce任务
+- [] 修改数据结构以适配reduce task加锁的场景,适配多worker

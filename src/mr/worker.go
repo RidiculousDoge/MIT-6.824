@@ -202,7 +202,11 @@ func execReduceTask(sourceFilename string, targetFilename string, reducef func(s
 	}
 
 	// sort result
-
+	for k, v := range targetReduceKva {
+		keyvalueObj := KeyValue{k, strconv.Itoa(v)}
+		targetKva = append(targetKva, keyvalueObj)
+	}
+	sort.Sort(ByKey(targetKva))
 	// save targetReduceKva to targetFile(overwrite)
 
 }
