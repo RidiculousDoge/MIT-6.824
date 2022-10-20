@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // for sorting by key.
@@ -132,13 +134,13 @@ func Worker(mapf func(string, string) []KeyValue,
 			mapTaskTimes += 1
 			execMapTask(reply.MapReply.Filename, mapf, reply.MapReply.NReduce, workerId, mapTaskTimes)
 		case ReduceTask:
-			execReduceTask(reply.ReduceReply.SrcFilename, reply.ReduceReply.TargetFilename)
+			execReduceTask(reply.ReduceReply.SrcFilename, reply.ReduceReply.TargetFilename, reducef)
 		}
 	}
 
 }
 
-func execReduceTask(sourceFilename string, targetFilename string) {
+func execReduceTask(sourceFilename string, targetFilename string, reducef func(string, []string) string) {
 	sourceFile, err := os.Open(sourceFilename)
 	if err != nil {
 		log.Fatalf("cannot open source file:%v", sourceFilename)
@@ -155,6 +157,54 @@ func execReduceTask(sourceFilename string, targetFilename string) {
 	sourceFileContent := string(sourceFileBytes)
 	targetFileContent := string(targetFileBytes)
 	// TODO: reduce sourceFileContent with targetFileContent
+	sourceFileStrls := strings.Split(sourceFileContent, "\n")
+	targetFileStrls := strings.Split(targetFileContent, "\n")
+	sourceKva := make([]KeyValue, 0)
+	targetKva := make([]KeyValue, 0)
+	for i := 0; i < len(sourceFileStrls); i++ {
+		kvaStr := strings.Split(sourceFileStrls[i], " ")
+		kva := KeyValue{kvaStr[0], kvaStr[1]}
+		sourceKva = append(sourceKva, kva)
+	}
+	// reduce sourceKva
+	sourceReducedKva := make(map[string]int)
+	i := 0
+	for i < len(sourceKva) {
+		j := i + 1
+		for j < len(sourceKva) && sourceKva[j].Key == sourceKva[i].Key {
+			j++
+		}
+		// note: all sourcefile's value are equally 1
+		sourceReducedKva[sourceKva[i].Key] = j - i
+	}
+	// merge with target kva
+	targetReduceKva := make(map[string]int)
+	for i = 0; i < len(targetFileStrls); i++ {
+		kvaStr := strings.Split(targetFileStrls[i], " ")
+		kva := KeyValue{kvaStr[0], kvaStr[1]}
+		curValue, _ := strconv.Atoi(kva.Value)
+		cnt, ok := sourceReducedKva[kva.Key]
+
+		if ok {
+			targetReduceKva[kva.Key] = cnt + curValue
+		} else {
+			targetReduceKva[kva.Key] = curValue
+		}
+	}
+	for k, v := range sourceReducedKva {
+		_, ok := targetReduceKva[k]
+		if ok {
+			// found in target
+			continue
+		} else {
+			targetReduceKva[k] = v
+		}
+	}
+
+	// sort result
+
+	// save targetReduceKva to targetFile(overwrite)
+
 }
 
 func writeToFile(intermediate *map[int][]KeyValue, workerId int, mapTaskTimes int) {
@@ -185,6 +235,9 @@ func execMapTask(filename string, mapf func(string, string) []KeyValue, nReduce 
 	for _, v := range kva {
 		target := ihash(v.Key) % nReduce
 		intermediate[target] = append(intermediate[target], v)
+	}
+	for i := 0; i < nReduce; i++ {
+		sort.Sort(ByKey(intermediate[i]))
 	}
 	writeToFile(&intermediate, workerId, mapTaskTimes)
 }
